@@ -18,6 +18,9 @@
 #'   If NULL, uses frequency-appropriate defaults. For EWMA, specifies the window
 #'   size when using TTR's optimized implementation. Cannot be used simultaneously
 #'   with `smoothing` for EWMA method.
+#'   For `ma` and `median` methods, a numeric vector is accepted (e.g., `c(3, 6, 12)`),
+#'   which runs the method once per window value and returns a named list with keys
+#'   like `ma_3`, `ma_6`, `ma_12`. Other methods ignore extra values (with a warning).
 #' @param smoothing Unified smoothing parameter for smoothing
 #'   methods (hp, loess, spline, ewma, kernel, kalman).
 #'   For hp: use large values (1600+) or small values (0-1) that get converted.
@@ -36,6 +39,10 @@
 #'   If NULL, uses `"center"` as default.
 #' @param params Optional list of method-specific parameters for fine control:
 #'   - **HP Filter**: `hp_onesided` (logical, default FALSE) - Use one-sided (real-time) filter instead of two-sided
+#'   - **STL**: `stl_s_window` or `s.window` (numeric/"periodic", default "periodic") - Seasonal window,
+#'     `stl_t_window` or `t.window` (numeric/NULL, default NULL) - Trend window,
+#'     `stl_robust` or `robust` (logical, default FALSE) - Use robust fitting.
+#'     Note: Both dot notation (`s.window`) and underscore notation (`stl_s_window`) are accepted.
 #'   - **Spline**: `spline_cv` (logical/NULL) - Cross-validation method: NULL (none), TRUE (leave-one-out), FALSE (GCV)
 #'   - **Polynomial**: `poly_degree` (integer, default 1), `poly_raw` (logical, default FALSE for orthogonal polynomials)
 #'   - **UCM**: `ucm_type` (character, default "level") - Model type: "level", "trend", or "BSM"
@@ -164,6 +171,19 @@
 #'   params = list(hp_onesided = TRUE)  # For nowcasting and real-time analysis
 #' )
 #'
+#' # STL with custom parameters via params (both notations work)
+#' stl_custom1 <- extract_trends(
+#'   AirPassengers,
+#'   methods = "stl",
+#'   params = list(s.window = 21, robust = TRUE)  # Dot notation
+#' )
+#'
+#' stl_custom2 <- extract_trends(
+#'   AirPassengers,
+#'   methods = "stl",
+#'   params = list(stl_s_window = 21, stl_robust = TRUE)  # Underscore notation
+#' )
+#'
 #' # Advanced: fine-tune specific methods
 #' custom_trends <- extract_trends(
 #'   AirPassengers,
@@ -235,11 +255,11 @@ extract_trends <- function(
   }
 
   # Validate unified parameters
-  if (
-    !is.null(window) &&
-      (!is.numeric(window) || length(window) != 1 || window <= 0)
-  ) {
-    cli::cli_abort("{.arg window} must be a positive numeric value")
+  if (!is.null(window) && (!is.numeric(window) || any(window <= 0))) {
+    cli::cli_abort(
+      "{.arg window} must be a positive numeric value or a vector of positive numeric values.",
+      "i" = "Got: {.val {window}}"
+    )
   }
 
   if (
@@ -309,6 +329,43 @@ extract_trends <- function(
     )
   }
 
+  # Handle vector window: expand ma/median methods into one call per window value
+  if (!is.null(window) && length(window) > 1) {
+    window_methods <- intersect(methods, .WINDOW_VECTOR_METHODS)
+    other_methods  <- setdiff(methods, .WINDOW_VECTOR_METHODS)
+
+    if (length(window_methods) == 0) {
+      cli::cli_warn(c(
+        "Multiple {.arg window} values are only supported for {.val ma} and {.val median} methods.",
+        "i" = "Using first value ({window[1]}) for method(s) {.val {methods}}."
+      ))
+      window <- window[1]
+    } else {
+      results <- list()
+
+      for (method in other_methods) {
+        results[[method]] <- extract_trends(
+          ts_data, methods = method, window = NULL,
+          smoothing = smoothing, band = band,
+          align = align, params = params, .quiet = .quiet
+        )
+      }
+
+      for (w in window) {
+        for (method in window_methods) {
+          results[[paste0(method, "_", w)]] <- extract_trends(
+            ts_data, methods = method, window = w,
+            smoothing = smoothing, band = band,
+            align = align, params = params, .quiet = .quiet
+          )
+        }
+      }
+
+      if (length(results) == 1) return(results[[1]])
+      return(results)
+    }
+  }
+
   # Process unified parameters to get method-specific parameters
   unified_params <- .process_unified_params(
     methods = methods,
@@ -317,7 +374,8 @@ extract_trends <- function(
     band = band,
     align = align,
     params = params,
-    frequency = freq
+    frequency = freq,
+    .quiet = .quiet
   )
 
   # Extract parameters from unified system with defaults
@@ -329,6 +387,8 @@ extract_trends <- function(
   ma_window <- .get_param("ma_window", freq)
   ma_align <- .get_param("ma_align", "center")
   stl_s_window <- .get_param("stl_s_window", "periodic")
+  stl_t_window <- .get_param("stl_t_window", NULL)
+  stl_robust <- .get_param("stl_robust", FALSE)
   loess_span <- .get_param("loess_span", 0.75)
   spline_spar <- .get_param("spline_spar", NULL)
   spline_cv <- .get_param("spline_cv", NULL)
@@ -369,12 +429,12 @@ extract_trends <- function(
       "bk" = .extract_bk_trend(ts_data, bk_low, bk_high, .quiet),
       "cf" = .extract_cf_trend(ts_data, cf_low, cf_high, .quiet),
       "ma" = .extract_ma_trend(ts_data, ma_window, ma_align, .quiet),
-      "stl" = .extract_stl_trend(ts_data, stl_s_window, .quiet),
+      "stl" = .extract_stl_trend(ts_data, stl_s_window, stl_t_window, stl_robust, .quiet),
       "loess" = .extract_loess_trend(ts_data, loess_span, .quiet),
       "spline" = .extract_spline_trend(ts_data, spline_spar, spline_cv, .quiet),
       "poly" = .extract_poly_trend(ts_data, poly_degree, poly_raw, .quiet),
       "bn" = .extract_bn_trend(ts_data, .quiet),
-      "ucm" = .extract_ucm_trend(ts_data, ucm_type, .quiet),
+      "ucm" = .extract_ucm_trend(ts_data, ucm_type, smoothing, .quiet),
       "hamilton" = .extract_hamilton_trend(
         ts_data,
         hamilton_h,

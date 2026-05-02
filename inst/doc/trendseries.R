@@ -3,10 +3,12 @@ knitr::opts_chunk$set(
   collapse = TRUE,
   comment = "#>",
   fig.width = 7,
-  fig.height = 4.5
+  fig.height = 4.5,
+  message = FALSE,
+  warning = FALSE
 )
 
-## ----setup, message=FALSE-----------------------------------------------------
+## -----------------------------------------------------------------------------
 library(trendseries)
 library(dplyr)
 library(ggplot2)
@@ -17,45 +19,51 @@ theme_series <- theme_minimal(paper = "#fefefe") +
     panel.grid.minor = element_blank(),
     # Use colors
     palette.colour.discrete = c(
-      "#024873FF",
-      "#BF4F26FF",
-      "#D98825FF",
-      "#D9AA1EFF",
-      "#A2A637FF"
+        "#2c3e50",
+        "#e74c3c",
+        "#f39c12",
+        "#1abc9c",
+        "#9b59b6"
     )
   )
 
-## ----first-trend--------------------------------------------------------------
-# Load the data
-data("gdp_construction", package = "trendseries")
+## -----------------------------------------------------------------------------
+head(electric)
 
-# Take a quick look
-head(gdp_construction)
+ggplot(electric, aes(date, consumption)) +
+  geom_line() +
+  theme_series
 
-## ----hp-basic-----------------------------------------------------------------
-# Extract trend using HP filter
-gdp_with_trend <- augment_trends(
-  gdp_construction,
-  value_col = "index",
-  methods = "hp"
+## -----------------------------------------------------------------------------
+elec_trend <- augment_trends(
+  electric,
+  value_col = "consumption",
+  methods = "stl"
 )
 
-# View the result
-head(gdp_with_trend)
+head(elec_trend)
 
-## ----plot-first-trend---------------------------------------------------------
+## ----eval = FALSE-------------------------------------------------------------
+# elec_trend <- augment_trends(
+#   electric,
+#   date_col = "date",
+#   value_col = "consumption",
+#   methods = "stl",
+#   frequency = 12
+# )
+
+## -----------------------------------------------------------------------------
 # Prepare data for plotting
-plot_data <- gdp_with_trend |>
-  select(date, index, trend_hp) |>
+plot_data <- elec_trend |>
   tidyr::pivot_longer(
-    cols = c(index, trend_hp),
+    cols = -date,
     names_to = "series",
     values_to = "value"
   ) |>
   mutate(
     series = case_when(
-      series == "index" ~ "Data (original)",
-      series == "trend_hp" ~ "HP Filter Trend"
+      series == "consumption" ~ "Data (original)",
+      series == "trend_stl" ~ "Trend (STL)"
     )
   )
 
@@ -63,238 +71,126 @@ plot_data <- gdp_with_trend |>
 ggplot(plot_data, aes(x = date, y = value, color = series)) +
   geom_line(linewidth = 0.8) +
   labs(
-    title = "Brazil GDP Construction: Original vs Trend",
-    x = "Date",
-    y = "Construction Index",
+    title = "Residential Electricity Consumption",
+    x = NULL,
+    y = "Electric Consumption (GWh)",
     color = NULL
   ) +
   theme_series
 
 ## -----------------------------------------------------------------------------
-gdp <- ts(
-  gdp_construction$index,
-  frequency = 4,
-  start = c(1996, 1)
-)
+ggplot(elec_trend, aes(x = date)) +
+  geom_line(
+    aes(y = consumption),
+    linewidth = 0.8,
+    alpha = 0.5,
+    color = "#024873FF") +
+  geom_line(
+    aes(y = trend_stl),
+    linewidth = 1,
+    color = "#024873FF") +
+  labs(
+    title = "Residential Electricity Consumption",
+    subtitle = "Decomposition using an STL trend",
+    x = NULL,
+    y = "Electric Consumption (GWh)",
+    color = NULL
+  ) +
+  theme_series
 
-gdp_trend_hp <- extract_trends(gdp, "hp")
+## -----------------------------------------------------------------------------
+cities <- c("Houston", "San Antonio", "Dallas", "Austin")
 
-## ----compare-methods----------------------------------------------------------
-# Extract multiple trends at once
-gdp_comparison <- gdp_construction |>
+txtrend <- txhousing |>
+  filter(city %in% cities, year >= 2010) |>
+  mutate(date = lubridate::make_date(year, month, 1)) |>
   augment_trends(
-    value_col = "index",
-    methods = c("hp", "loess", "ma")
+    value_col = "median",
+    group_cols = "city"
   )
 
-# View the first few rows
-gdp_comparison |>
-  select(date, index, starts_with("trend_")) |>
-  head()
+ggplot(txtrend, aes(date)) +
+  geom_line(aes(y = median), alpha = 0.5, color = "#024873FF") +
+  geom_line(aes(y = trend_stl), color = "#024873FF") +
+  facet_wrap(vars(city)) +
+  theme_series
 
-## ----plot-comparison----------------------------------------------------------
-# Prepare data for plotting
-comparison_plot <- gdp_comparison |>
-  select(date, index, starts_with("trend_")) |>
+## -----------------------------------------------------------------------------
+ggplot(retail_autofuel, aes(date, value)) +
+  geom_line(lwd = 0.8, color = "#024873FF") +
+  theme_series
+
+## ----compare-methods----------------------------------------------------------
+fuel_trends <- retail_autofuel |>
+  filter(date >= as.Date("2012-01-01")) |>
+  augment_trends(
+    methods = c("stl", "hp", "loess")
+  )
+
+comparison_plot <- fuel_trends |>
   tidyr::pivot_longer(
-    cols = c(index, starts_with("trend_")),
+    cols = c(value, starts_with("trend_")),
     names_to = "method",
-    values_to = "value"
   ) |>
   mutate(
     method = case_when(
-      method == "index" ~ "Data (original)",
+      method == "value" ~ "Data (original)",
       method == "trend_hp" ~ "HP Filter",
-      method == "trend_loess" ~ "LOESS",
-      method == "trend_ma" ~ "Moving Average"
+      method == "trend_stl" ~ "STL",
+      method == "trend_loess" ~ "LOESS"
     )
   )
 
-# Plot
 ggplot(comparison_plot, aes(x = date, y = value, color = method)) +
   geom_line(linewidth = 0.8) +
   labs(
     title = "Comparing Different Trend Extraction Methods",
     subtitle = "Same data, different methods",
     x = "Date",
-    y = "Construction Index",
+    y = "Retail Sales Index",
     color = "Method"
   ) +
   theme_series
 
-## ----monthly-data-------------------------------------------------------------
-# Load monthly vehicle production data
-data("vehicles", package = "trendseries")
+## -----------------------------------------------------------------------------
+elec_trends <- electric |>
+  rename(value = consumption) |>
+  # window controls the s.window argument by default
+  augment_trends(methods = "stl", window = 17) |>
+  # Creates a 11-month moving median
+  augment_trends(methods = "median", window = 11) |>
+  # Creates a (centered) 5-month moving average
+  augment_trends(methods = "ma", window = 5) |>
+  # Creates a (centered) 2x12 moving average
+  augment_trends(methods = "ma", window = 12)
 
-# Look at recent data (last 4 years)
-recent_vehicles <- vehicles |>
-  slice_tail(n = 48)
-
-head(recent_vehicles)
-
-## ----monthly-trend------------------------------------------------------------
-# Extract trend from monthly data
-vehicles_with_trend <- vehicles |>
-  augment_trends(
-    value_col = "production",
-    methods = "hp"
-  )
-
-vehicles_with_trend <- vehicles_with_trend |>
+## ----echo = FALSE-------------------------------------------------------------
+comparison_plot <- elec_trends |>
   tidyr::pivot_longer(
-    cols = c(production, trend_hp),
-    names_to = "series",
-    values_to = "value"
-  ) |>
-  mutate(
-    series = ifelse(series == "production", "Original", "HP Trend"),
-    # To make sure the trend is plotted on top of the original series
-    # configure levels accordingly
-    series = factor(series, levels = c("Original", "HP Trend"))
-  )
-
-ggplot(vehicles_with_trend, aes(x = date, y = value, color = series)) +
-  geom_line(linewidth = 0.8) +
-  labs(
-    title = "Brazil Vehicle Production: Monthly Data",
-    subtitle = "Last 4 years of data",
-    x = "Date",
-    y = "Production (thousands of units)",
-    color = NULL
-  ) +
-  theme_series
-
-## ----window-param-------------------------------------------------------------
-# Try different window sizes
-vehicles_windows <- recent_vehicles |>
-  augment_trends(
-    value_col = "production",
-    methods = "ma",
-    window = 6
-  ) |>
-  rename(trend_ma_6m = trend_ma)
-
-# Add 12-month window
-vehicles_windows <- vehicles_windows |>
-  augment_trends(
-    value_col = "production",
-    methods = "ma",
-    window = 12
-  )
-
-# Visualize
-vehicles_windows <- vehicles_windows |>
-  select(date, production, trend_ma_6m, trend_ma) |>
-  tidyr::pivot_longer(
-    cols = c(production, trend_ma_6m, trend_ma),
+    cols = c(value, starts_with("trend_")),
     names_to = "method",
-    values_to = "value"
   ) |>
   mutate(
     method = case_when(
-      method == "production" ~ "Data (original)",
-      method == "trend_ma_6m" ~ "MA (6-month)",
-      method == "trend_ma" ~ "MA (12-month)"
+      method == "value" ~ "Data (original)",
+      method == "trend_median" ~ "Median",
+      method == "trend_stl" ~ "STL",
+      method == "trend_ma" ~ "MA (5)",
+      method == "trend_ma_1" ~ "MA (2x12)"
     )
-  )
+  ) |>
+  filter(date >= as.Date("2018-01-01"))
 
-ggplot(vehicles_windows, aes(x = date, y = value, color = method)) +
+ggplot(comparison_plot, aes(x = date, y = value, color = method)) +
   geom_line(linewidth = 0.8) +
   labs(
-    title = "Window Size Comparison",
-    subtitle = "Larger windows = smoother trends",
+    title = "Comparing Different Trend Extraction Methods",
+    subtitle = "Same data, different methods",
     x = "Date",
-    y = "Production (thousands)",
-    color = NULL
+    y = "Retail Sales Index",
+    color = "Method"
   ) +
   theme_series
-
-## -----------------------------------------------------------------------------
-data("ibcbr", package = "trendseries")
-
-series <- full_join(ibcbr, vehicles, by = "date")
-
-series <- series |>
-  filter(date >= as.Date("2010-01-01")) |>
-  tidyr::pivot_longer(
-    cols = c(index, production),
-    names_to = "indicator",
-    values_to = "value"
-  ) |>
-  # Normalize to Jan 2010 = 100 for comparison
-  mutate(
-    norm_index = value / first(value) * 100,
-    .by = indicator
-  )
-
-series <- augment_trends(
-  series,
-  value_col = "norm_index",
-  methods = "hp",
-  group_vars = "indicator"
-)
-
-## ----multi-series-------------------------------------------------------------
-# Plot trends only
-series |>
-  ggplot(aes(x = date, color = indicator)) +
-  geom_line(aes(y = norm_index), alpha = 0.4) +
-  geom_line(aes(y = trend_hp), linewidth = 1) +
-  labs(
-    title = "Economic Indicators: HP Filter Trends",
-    subtitle = "Normalized to first observation = 100",
-    x = "Date",
-    y = "Index (normalized)",
-    color = "Indicator"
-  ) +
-  theme_series
-
-## ----eval=FALSE---------------------------------------------------------------
-# # Single method, quarterly data
-# data |>
-#   augment_trends(value_col = "your_column", methods = "hp")
-# 
-# # Single series, monthly data
-# extract_trends(your_ts_data, method = "loess")
-
-## ----eval=FALSE---------------------------------------------------------------
-# data |>
-#   augment_trends(
-#     value_col = "your_column",
-#     methods = c("hp", "loess", "ma")
-#   )
-
-## ----eval=FALSE---------------------------------------------------------------
-# # Smoother HP filter (higher lambda)
-# data |>
-#   augment_trends(
-#     value_col = "your_column",
-#     methods = "hp",
-#     smoothing = 3200  # vs default 1600 for quarterly
-#   )
-# 
-# # Longer moving average window
-# data |>
-#   augment_trends(
-#     value_col = "your_column",
-#     methods = "ma",
-#     window = 24  # 2-year window for monthly data
-#   )
-
-## ----eval=FALSE---------------------------------------------------------------
-# # Apply trend to multiple series at once
-# multi_series_data |>
-#   group_by(country) |>
-#   augment_trends(value_col = "gdp", methods = "hp") |>
-#   ungroup()
-# 
-# # Or using group_vars argument
-# multi_series_data |>
-#   augment_trends(
-#     value_col = "gdp",
-#     methods = "hp",
-#     group_vars = "country"
-#   )
 
 ## -----------------------------------------------------------------------------
 gdp_cons <- ts(

@@ -30,7 +30,10 @@ Default is \code{"stl"}.}
 average methods (ma, wma, triangular, stl, ewma, median, gaussian). Must be positive.
 If NULL, uses frequency-appropriate defaults. For EWMA, specifies the window
 size when using TTR's optimized implementation. Cannot be used simultaneously
-with \code{smoothing} for EWMA method.}
+with \code{smoothing} for EWMA method.
+For \code{ma} and \code{median} methods, a numeric vector is accepted (e.g., \code{c(3, 6, 12)}),
+which runs the method once per window value and returns a named list with keys
+like \code{ma_3}, \code{ma_6}, \code{ma_12}. Other methods ignore extra values (with a warning).}
 
 \item{smoothing}{Unified smoothing parameter for smoothing
 methods (hp, loess, spline, ewma, kernel, kalman).
@@ -54,6 +57,10 @@ If NULL, uses \code{"center"} as default.}
 \item{params}{Optional list of method-specific parameters for fine control:
 \itemize{
 \item \strong{HP Filter}: \code{hp_onesided} (logical, default FALSE) - Use one-sided (real-time) filter instead of two-sided
+\item \strong{STL}: \code{stl_s_window} or \code{s.window} (numeric/"periodic", default "periodic") - Seasonal window,
+\code{stl_t_window} or \code{t.window} (numeric/NULL, default NULL) - Trend window,
+\code{stl_robust} or \code{robust} (logical, default FALSE) - Use robust fitting.
+Note: Both dot notation (\code{s.window}) and underscore notation (\code{stl_s_window}) are accepted.
 \item \strong{Spline}: \code{spline_cv} (logical/NULL) - Cross-validation method: NULL (none), TRUE (leave-one-out), FALSE (GCV)
 \item \strong{Polynomial}: \code{poly_degree} (integer, default 1), \code{poly_raw} (logical, default FALSE for orthogonal polynomials)
 \item \strong{UCM}: \code{ucm_type} (character, default "level") - Model type: "level", "trend", or "BSM"
@@ -184,6 +191,19 @@ hp_realtime <- extract_trends(
   AirPassengers,
   methods = "hp",
   params = list(hp_onesided = TRUE)  # For nowcasting and real-time analysis
+)
+
+# STL with custom parameters via params (both notations work)
+stl_custom1 <- extract_trends(
+  AirPassengers,
+  methods = "stl",
+  params = list(s.window = 21, robust = TRUE)  # Dot notation
+)
+
+stl_custom2 <- extract_trends(
+  AirPassengers,
+  methods = "stl",
+  params = list(stl_s_window = 21, stl_robust = TRUE)  # Underscore notation
 )
 
 # Advanced: fine-tune specific methods

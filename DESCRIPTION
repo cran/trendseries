@@ -1,13 +1,18 @@
 Package: trendseries
 Type: Package
 Title: Extract Trends from Time Series
-Version: 1.1.0
+Version: 1.2.0
 Description: Extract trends from monthly and quarterly economic time series.
-    Provides two main functions: augment_trends() for pipe-friendly 'tibble' workflows
-    and extract_trends() for direct time series analysis. Includes key econometric
-    filters and modern parameter experimentation tools.
+    Provides two main functions: augment_trends() for pipe-friendly 'tibble'
+    workflows and extract_trends() for direct time series analysis. Includes
+    established econometric filters such as Hodrick-Prescott (HP),
+    Baxter-King, Christiano-Fitzgerald, and Hamilton, alongside moving
+    averages and smoothing methods. Smart defaults are tuned for common
+    economic frequencies following Ravn and Uhlig (2002)
+    <doi:10.1162/003465302317411604>.
 License: MIT + file LICENSE
 Encoding: UTF-8
+Language: en-US
 LazyData: true
 URL: https://github.com/viniciusoike/trendseries,
         https://viniciusoike.github.io/trendseries/
@@ -16,15 +21,15 @@ Imports: cli, dlm, glue, hpfilter, lubridate, mFilter, RcppRoll, stats,
         tibble, tsbox
 Depends: R (>= 4.1.0)
 RoxygenNote: 7.3.3
-Suggests: dplyr, ggplot2, knitr, rmarkdown, testthat (>= 3.0.0), tidyr,
-        xts
+Suggests: dplyr, ggplot2, knitr, rmarkdown, scales, testthat (>=
+        3.0.0), tidyr, xts
 VignetteBuilder: knitr
 Config/testthat/edition: 3
 Authors@R: 
-    person("Vinicius", "Oike", , "viniciusoike@gmail.com", role = c("aut", "cre"))
+    person("Vinicius", "Oike", , "viniciusoike@gmail.com", role = c("aut", "cre", "cph"))
 NeedsCompilation: no
-Packaged: 2025-11-09 03:07:45 UTC; viniciusreginatto
-Author: Vinicius Oike [aut, cre]
+Packaged: 2026-05-02 21:23:46 UTC; viniciusreginatto
+Author: Vinicius Oike [aut, cre, cph]
 Maintainer: Vinicius Oike <viniciusoike@gmail.com>
 Repository: CRAN
-Date/Publication: 2025-11-12 21:00:02 UTC
+Date/Publication: 2026-05-02 22:50:02 UTC
